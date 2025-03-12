@@ -46,10 +46,8 @@ class HelloWorld(Template):
             container (DataContainer): The modified data container. A text packet is appended to the 'texts' field.
         """
         text_packet = TextPacket(content=self.attributes.display_text)
-        # optionally add additional metadata that may be useful in downstream tasks
         text_packet.source = self.instance_name
 
-        # finally append it to the data container
         container.texts.append(text_packet)
 
         return container
