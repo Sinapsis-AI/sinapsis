@@ -16,15 +16,14 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 ADD https://astral.sh/uv/install.sh /uv-installer.sh
 RUN sh /uv-installer.sh && rm /uv-installer.sh
 ENV PATH="/root/.local/bin/:$PATH"
-COPY . /app/.venv
+COPY . /app/
 
 # sync all requirements including optional ones
-COPY pyproject.toml uv.lock /app/
 WORKDIR /app/.venv
 RUN uv sync --frozen  --all-extras
 
 # install the generated wheel for this app
-RUN uv build && uv pip install /app/dist/sinapsis*-none-any.whl
+RUN uv pip install sinapsis --extra-index-url https://pypi.sinapsis.tech
 
 
 FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu$UBUNTU_VERSION AS nvidia-base
