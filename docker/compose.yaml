@@ -1,0 +1,18 @@
+services:
+  sinapsis-base: &default
+    image: sinapsis:base
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+      target: base
+      ssh:
+        - default
+    environment:
+      PYTHONPATH: /lib/python3.10/:/app/.venv/lib/python3.10/site-packages
+
+  sinapsis-nvidia-base:
+    extends:
+      service: sinapsis-base
+    image: sinapsis-nvidia:base
+    build:
+      target: nvidia-base

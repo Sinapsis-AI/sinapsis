@@ -1,0 +1,46 @@
+fail_fast: True
+
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    -   id: fix-encoding-pragma
+        exclude: 'docs/.*'
+    -   id: check-yaml
+        exclude: 'docs/.*'
+    -   id: trailing-whitespace
+        exclude: 'docs/.*'
+    -   id: name-tests-test
+        args: ["--pytest-test-first"]
+        exclude: 'docs/.*'
+    -   id: check-added-large-files
+        args: ["--maxkb=10"]
+    -   id: check-docstring-first
+        exclude: 'docs/.*'
+    -   id: check-case-conflict
+        exclude: 'docs/.*'
+    -   id: check-shebang-scripts-are-executable
+        exclude: 'docs/.*'
+
+-   repo: https://github.com/gitleaks/gitleaks
+    rev: v8.16.1
+    hooks:
+    -   id: gitleaks
+        exclude: '.*/tests/.*'
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.9.3
+  hooks:
+    - id: ruff
+    - id: ruff-format
+
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+    -   id: mypy
+        name: mypy
+        entry: mypy
+        language: python
+        types: [python]
+        additional_dependencies:
+            - "pydantic>=2.8.2"

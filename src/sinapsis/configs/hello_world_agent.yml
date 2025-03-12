@@ -1,0 +1,22 @@
+agent:
+  name: hello_world_agent
+  attributes:
+    templates_to_profile: "HelloWorld"
+    description: "Hello world agent example"
+
+templates:
+- template_name: InputTemplate  # template name can be anything but must be unique
+  class_name: InputTemplate
+  attributes: {}
+
+- template_name: HelloWorld
+  class_name: HelloWorld
+  template_input: InputTemplate
+  attributes:
+    display_text: "Hello, this is my first template!"
+
+- template_name: DisplayHelloWorld
+  class_name: DisplayHelloWorld
+  template_input: HelloWorld
+  attributes: {}  # we did not define any attributes in our template
+

@@ -1,0 +1,64 @@
+[project]
+name = "sinapsis"
+version = "0.1.1"
+description = "Modular and Universal AI platform"
+authors = [
+    {name = "SinapsisAI", email = "dev@sinapsis.tech"},
+]
+
+dependencies = [
+    "sinapsis-core>=0.1.0",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {file = "LICENSE"}
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.1.0",
+    "ruff>=0.9.10",
+]
+
+[project.scripts]
+sinapsis = "sinapsis.bin.sinapsis_cli:main"
+
+[project.optional-dependencies]
+all = [
+ "sinapsis[dev]",
+]
+
+
+[tool.ruff]
+lint.select = [
+    "ARG",
+    "BLE",
+    "C4",
+    "E",
+    "F",
+    "FIX",
+    "FLY",
+    "I",
+    "PERF",
+    "PIE",
+    "RUF",
+    "RSE",
+    "SIM",
+    "SLOT",
+    "T10",
+    "T20",
+    "TD",
+    "TID",
+]
+line-length = 120
+show-fixes = true
+
+[tool.uv.sources]
+sinapsis-core = { index = "sinapsis-core" }
+
+[[tool.uv.index]]
+name = "sinapsis-core"
+url = "https://pypi.sinapsis.tech/"
+explicit = true
+
+[tool.setuptools]
+license-files = []
