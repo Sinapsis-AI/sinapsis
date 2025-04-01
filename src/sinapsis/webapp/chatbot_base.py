@@ -8,6 +8,7 @@ from pydantic.dataclasses import dataclass
 from sinapsis_core.cli.run_agent_from_config import generic_agent_builder
 from sinapsis_core.data_containers.data_packet import DataContainer, TextPacket
 from sinapsis_core.utils.env_var_keys import SINAPSIS_CACHE_DIR
+from sinapsis_core.utils.logging_utils import sinapsis_logger
 
 from sinapsis.webapp.agent_gradio_helper import add_logo_and_title, css_header
 
@@ -168,7 +169,9 @@ class BaseChatbot:
         Returns:
             tuple: A tuple with None and Gradio updates for interactivity.
         """
-        self._clear_history()
+        with open(self.file_name, "w+", encoding="utf-8") as chat:
+            json.dump(self.chat_history, chat, indent=4)
+        chat.close()
         self.agent = None
         return gr.update(interactive=False), gr.update(interactive=False)
 
@@ -179,10 +182,11 @@ class BaseChatbot:
         This method writes the current chat history to a file in JSON format,
             then clears the history.
         """
-        with open(self.file_name, "w+", encoding="utf-8") as chat:
-            json.dump(self.chat_history, chat, indent=4)
-        chat.close()
         self.chat_history = []
+        try:
+            os.remove(self.file_name)
+        except FileNotFoundError:
+            sinapsis_logger.warning("Chat history file does not exist")
 
     def process_msg(self, message: str, conv_id: str) -> tuple[list, gr.Textbox, gr.Audio, str] | list:
         """
@@ -236,7 +240,6 @@ class BaseChatbot:
         """
 
         conversation_id = gr.State()
-
         (
             chatbot,
             chat_input,
