@@ -35,6 +35,7 @@ def init_image_inference(
     stream: bool = False,
     image_input: gr.Image | None = gr.Image,
     app_message: str | None = None,
+    examples: list[str] | None = None,
 ):
     """
     Method to perform inference on the input from gradio
@@ -44,6 +45,7 @@ def init_image_inference(
         stream (bool) : Whether to consume a single image (False) or a video (True)
         image_input (gr.Image | None): Whether the app takes an input image or not
         app_message (str | None): The message that shows up in the interface when starting it.
+        examples (list | None): Adds example images to the gradio app
     """
     input_sources = ["webcam"]
     if not stream:
@@ -60,6 +62,7 @@ def init_image_inference(
         title=title,
         flagging_mode="never",
         article=app_message,
+        examples=examples,
     )
     return live_interface
 
@@ -117,10 +120,11 @@ def add_logo_and_title(page_title: str | None = None) -> None:
             logo_path,
             elem_id="sinapsis-logo",
             width=800,
-            height=50,
+            height=150,
             show_label=False,
             show_download_button=False,
             show_fullscreen_button=False,
+            scale=0.5,
         )
 
         gr.Markdown(f"# {page_title}", elem_id="title")

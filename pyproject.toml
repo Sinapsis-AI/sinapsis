@@ -1,6 +1,6 @@
 [project]
 name = "sinapsis"
-version = "0.2.1"
+version = "0.2.2"
 description = "Modular and Universal AI platform"
 authors = [
     {name = "SinapsisAI", email = "dev@sinapsis.tech"},
@@ -25,6 +25,9 @@ sinapsis = "sinapsis.bin.sinapsis_cli:main"
 [project.optional-dependencies]
 all = [
  "sinapsis[dev]",
+]
+webapp = [
+    "gradio>=5.23.3",
 ]
 
 
@@ -58,6 +61,10 @@ sinapsis-core = { index = "sinapsis-core" }
 [[tool.uv.index]]
 name = "sinapsis-core"
 url = "https://pypi.sinapsis.tech/"
+
+
+[tool.setuptools]
+license-files = []
 
 [build-system]
 requires = ["setuptools"]
