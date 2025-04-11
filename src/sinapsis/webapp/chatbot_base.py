@@ -4,6 +4,8 @@ import os.path
 import uuid
 
 import gradio as gr
+import numpy as np
+from PIL import Image
 from pydantic.dataclasses import dataclass
 from sinapsis_core.cli.run_agent_from_config import generic_agent_builder
 from sinapsis_core.data_containers.data_packet import DataContainer, TextPacket
@@ -25,6 +27,7 @@ class ChatKeys:
     """
 
     text: str = "text"
+    image: str = "image"
     files: str = "files"
     file_path: str = "path"
     audio_path: str = "audio_path"
@@ -79,19 +82,34 @@ class BaseChatbot:
                 json.dump(history, file)
         return history
 
-    @staticmethod
-    def generate_packet(message, conv_id: str) -> DataContainer:
+    def generate_packet(self, message, conv_id: str) -> DataContainer:
         """
         Args:
         message (str): The user's input message, either as a audio file or text
         conv_id (str): The conversation ID to associate with the message.
         """
         container = DataContainer()
-        if not message.endswith("wav"):
-            text_msg = TextPacket(content=message, id=conv_id)
-            container.texts.append(text_msg)
-        else:
-            container.generic_data[ChatKeys.audio_path] = message
+        if isinstance(message, dict):
+            text_msg = message.get(ChatKeys.text, False)
+            image_msg = message.get(ChatKeys.files, False)
+            if text_msg:
+                text_msg = TextPacket(content=message, id=conv_id)
+                container.texts.append(text_msg)
+            if image_msg:
+                full_image_path = image_msg[0].split("/gradio/")
+                data_dir = f"{full_image_path[0]}/gradio/"
+                image_name = full_image_path[1]
+
+                self.agent.update_template_attribute("ImageReader", "data_dir", data_dir)
+                self.agent.update_template_attribute("ImageReader", "pattern", image_name)
+                self.agent.reset_state("ImageReader")
+
+        if isinstance(message, str):
+            if not message.endswith("wav"):
+                text_msg = TextPacket(content=message, id=conv_id)
+                container.texts.append(text_msg)
+            elif message.endswith("wav"):
+                container.generic_data[ChatKeys.audio_path] = message
         return container
 
     def agent_execution(self, container: DataContainer) -> dict:
@@ -111,14 +129,20 @@ class BaseChatbot:
             ChatKeys.text: "Could not process request, please try again",
             ChatKeys.files: [],
         }
-
         if response.texts:
-            response_dict = {
-                ChatKeys.text: response.texts[-1].content,
-                ChatKeys.files: [],
-            }
+            response_dict = response.texts[-1].content
+
         if container.generic_data.get(ChatKeys.audio_path):
             container.generic_data[ChatKeys.audio_path] = False
+        if response.images:
+            image_as_packet = response.images[-1]
+            image = Image.fromarray(np.uint8(image_as_packet.content))
+            image_path = f"{SINAPSIS_CACHE_DIR}{image_as_packet.source}"
+            os.makedirs(os.path.dirname(image_path), exist_ok=True)
+
+            image.save(image_path)
+            response_dict = {ChatKeys.files: [image_path]}
+
         return response_dict
 
     @staticmethod
@@ -135,7 +159,9 @@ class BaseChatbot:
             conv_id = str(uuid.uuid4())
         return conv_id
 
-    def add_message(self, message: dict | str, role: str) -> tuple[gr.components.Textbox, gr.components.Audio]:
+    def add_message(
+        self, message: dict | str, role: str
+    ) -> tuple[gr.components.MultimodalTextbox, gr.components.Audio]:
         """
         The method adds a user or assistant message to the chat history.
 
@@ -146,19 +172,18 @@ class BaseChatbot:
         Returns:
             tuple: A tuple with updated chat history, a Textbox, and an Audio component.
         """
-
         if isinstance(message, dict):
             for x in message[ChatKeys.files]:
                 self.chat_history.append({ChatKeys.role: role, ChatKeys.content: {ChatKeys.file_path: x}})
-            if message[ChatKeys.text]:
+            if message.get(ChatKeys.text, False):
                 self.chat_history.append({ChatKeys.role: role, ChatKeys.content: message[ChatKeys.text]})
         elif isinstance(message, str) and not message.endswith("wav"):
             self.chat_history.append({ChatKeys.role: role, ChatKeys.content: message})
         else:
             self.chat_history.append({ChatKeys.role: role, ChatKeys.content: {ChatKeys.file_path: message}})
         return (
-            gr.Textbox(value=None),
-            gr.Audio(value=None),
+            gr.MultimodalTextbox(),
+            gr.Audio(),
         )
 
     def stop_agent(self) -> tuple[dict, dict]:
@@ -188,7 +213,7 @@ class BaseChatbot:
         except FileNotFoundError:
             sinapsis_logger.warning("Chat history file does not exist")
 
-    def process_msg(self, message: str, conv_id: str) -> tuple[list, gr.Textbox, gr.Audio, str] | list:
+    def process_msg(self, message: str, conv_id: str) -> tuple[list, gr.MultimodalTextbox, gr.Audio, str] | list:
         """
         Process a user message and generate a chatbot response.
 
@@ -204,11 +229,10 @@ class BaseChatbot:
         _ = self.add_message(message, ChatKeys.user)
         container = self.generate_packet(message, conv_id)
         response = self.agent_execution(container)
-
         retrieved_chat = self.add_message(response, ChatKeys.assistant)
         return self.chat_history, retrieved_chat[0], retrieved_chat[1], conv_id
 
-    def add_app_components(self) -> tuple[gr.Chatbot, gr.Textbox, gr.Audio]:
+    def add_app_components(self) -> tuple[gr.Chatbot, gr.MultimodalTextbox, gr.Audio]:
         """
         Add interactive components (buttons, inputs, and chatbot UI) to the interface.
 
@@ -216,12 +240,15 @@ class BaseChatbot:
             tuple: A tuple containing the components for the chatbot interface.
         """
         chatbot = gr.Chatbot(
-            self.chat_history, type="messages", height=600, show_label=False, avatar_images=(None, SINAPSIS_AVATAR)
-        )
-        chat_input = gr.Textbox(
-            interactive=True,
-            placeholder="Enter a message",
+            self.chat_history,
+            type="messages",
+            height=800,
             show_label=False,
+            avatar_images=(None, SINAPSIS_AVATAR),
+            show_copy_all_button=True,
+        )
+        chat_input = gr.MultimodalTextbox(
+            interactive=True, placeholder="Enter a message", show_label=False, file_types=[".png", ".jpg"]
         )
 
         audio_input = gr.Audio(
