@@ -17,7 +17,7 @@ class BaseTTSApp:
     def __init__(
         self,
         config_file: str,
-        generic_key: str | None = None,
+        generic_key_or_base_path: str | None = None,
         framework: str = "Elevenlabs",
         task: str = "Text-to-Speech",
     ) -> None:
@@ -27,7 +27,8 @@ class BaseTTSApp:
         Args:
             config_file (str): Path to the configuration file for the TTS application, which contains
                                 necessary settings and parameters.
-            generic_key (str | None): Optional key to access the container's generic data from.
+            generic_key_or_base_path (str | None): Optional key to access the container's generic data or the base_path
+                where audios are located
             framework (str, optional): The name of the framework to be used in the user interface title.
                                        Defaults to Elevenlabs.
             task (str, optional): The task to be performed by the application (default is "Text-to-Speech").
@@ -36,7 +37,7 @@ class BaseTTSApp:
         self.config_file = config_file
         self.framework = framework
         self.task = task
-        self.generic_key = generic_key
+        self.generic_key_or_base_path = generic_key_or_base_path
 
     def init_agent(self) -> tuple[Agent, bool]:
         """
@@ -82,7 +83,7 @@ class BaseTTSApp:
             agent = cast(Agent, agent)
             container = DataContainer(texts=[TextPacket(content=text_to_convert)])
             output_container = agent(container)
-            audio_path = self._postprocess_output(output_container, self.generic_key)
+            audio_path = self._postprocess_output(output_container, self.generic_key_or_base_path)
             if audio_path:
                 return gr.Audio(audio_path, visible=True), None
             raise gr.Error("Unable to generate speech")
@@ -101,8 +102,6 @@ class BaseTTSApp:
         initialized_state = gr.State(False)
         interface.load(self.init_agent, outputs=[agent_state, initialized_state])
 
-        title: str = f"# Sinapsis {self.framework} {self.task} demo"
-        gr.Markdown(title)
         text_to_convert = gr.Textbox(
             submit_btn=True,
             label="Text to convert:",
@@ -126,18 +125,15 @@ class BaseTTSApp:
         Invokes the Gradio interface and displays the TTS functionality.
         """
         with gr.Blocks() as tts_interface:
-            add_logo_and_title("Sinapsis text-to-speech")
+            add_logo_and_title(f"Sinapsis {self.framework} {self.task} demo")
             self.inner_tts_functionality(tts_interface)
         return tts_interface
 
 
 class TTSAppAudioFromPacket(BaseTTSApp):
-    BASE_AUDIO_PATH: str
     """
-    A subclass of BaseTTSApp for implementing text-to-speech functionality using F5TTS.
-
-    This class overrides the abstract methods from BaseTTSApp to provide specific preprocessing
-    and postprocessing steps for the F5TTS application.
+    A subclass of BaseTTSApp for implementing text-to-speech functionality extracting the audio path
+    from the generic_data field of Containers.
     """
 
     def _postprocess_output(self, container: DataContainer, generic_key: str | None) -> str | None:
@@ -148,7 +144,7 @@ class TTSAppAudioFromPacket(BaseTTSApp):
 
         audio = container.audios[-1]
         audio_path = f"{audio.source}-{audio.id.split('-')[0]}"
-        audio_path = f"{self.BASE_AUDIO_PATH}/{audio_path}.wav"
+        audio_path = f"{self.generic_key_or_base_path}/{audio_path}.wav"
         return audio_path
 
 

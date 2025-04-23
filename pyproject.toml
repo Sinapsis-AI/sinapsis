@@ -1,6 +1,6 @@
 [project]
 name = "sinapsis"
-version = "0.2.3"
+version = "0.2.4"
 description = "Modular and Universal AI platform"
 authors = [
     {name = "SinapsisAI", email = "dev@sinapsis.tech"},

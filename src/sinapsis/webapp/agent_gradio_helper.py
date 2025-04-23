@@ -119,12 +119,11 @@ def add_logo_and_title(page_title: str | None = None) -> None:
         gr.Image(
             logo_path,
             elem_id="sinapsis-logo",
-            width=800,
-            height=150,
+            height=50,
             show_label=False,
             show_download_button=False,
             show_fullscreen_button=False,
-            scale=0.5,
+            scale=1,
         )
 
         gr.Markdown(f"# {page_title}", elem_id="title")
