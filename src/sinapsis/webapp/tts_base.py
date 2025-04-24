@@ -6,7 +6,7 @@ from sinapsis_core.agent import Agent
 from sinapsis_core.cli.run_agent_from_config import generic_agent_builder
 from sinapsis_core.data_containers.data_packet import DataContainer, TextPacket
 
-from sinapsis.webapp.agent_gradio_helper import add_logo_and_title
+from sinapsis.webapp.agent_gradio_helper import add_logo_and_title, css_header
 
 
 class BaseTTSApp:
@@ -124,7 +124,7 @@ class BaseTTSApp:
         """
         Invokes the Gradio interface and displays the TTS functionality.
         """
-        with gr.Blocks() as tts_interface:
+        with gr.Blocks(css=css_header()) as tts_interface:
             add_logo_and_title(f"Sinapsis {self.framework} {self.task} demo")
             self.inner_tts_functionality(tts_interface)
         return tts_interface
