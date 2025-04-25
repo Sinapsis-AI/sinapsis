@@ -222,21 +222,6 @@ Tutorials for different projects within sinapsis are available at [sinapsis tuto
 
 The sinapsis framework contains a list of public packages with **Templates** covering a wide range of tasks,
 including computer vision, time series, nlp, llm'. These packages include:
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis data tools</span></strong></summary>
-
-
-* [sinapsis-data-readers](https://github.com/Sinapsis-ai/sinapsis-data-tools/tree/main/packages/sinapsis_data_readers)
-
-* [sinapsis-data-writers](https://github.com/Sinapsis-ai/sinapsis-data-tools/tree/main/packages/sinapsis_data_writers)
-
-* [sinapsis-data-visualization](https://github.com/Sinapsis-ai/sinapsis-data-tools/tree/main/packages/sinapsis_data_visualization)
-
-* [sinapsis-generic-data-tools](https://github.com/Sinapsis-ai/sinapsis-data-tools/tree/main/packages/sinapsis_generic_data_tools)
-
-</details>
-
-Here is the alphabetically organized list of GitHub repositories, maintaining the original style:
 
 <details>
 <summary><strong><span style="font-size: 1.4em;">sinapsis anomaly detection</span></strong></summary>
