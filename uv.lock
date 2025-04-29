@@ -1099,7 +1099,7 @@ dev = [
 
 [[package]]
 name = "sinapsis-core"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.sinapsis.tech/" }
 dependencies = [
     { name = "docstring-parser" },
@@ -1108,7 +1108,7 @@ dependencies = [
     { name = "pyyaml" },
 ]
 wheels = [
-    { url = "https://pypi.sinapsis.tech/sinapsis-core/sinapsis_core-0.1.0-py3-none-any.whl" },
+    { url = "https://pypi.sinapsis.tech/sinapsis-core/sinapsis_core-0.1.1-py3-none-any.whl" },
 ]
 
 [[package]]
