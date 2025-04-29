@@ -2,7 +2,8 @@
 """Example Hello World Sinapsis template."""
 
 from sinapsis_core.data_containers.data_packet import DataContainer, TextPacket
-from sinapsis_core.template_base import Template, TemplateAttributes, TemplateAttributeType
+from sinapsis_core.template_base import Template
+from sinapsis_core.template_base.base_models import TemplateAttributes, TemplateAttributeType
 
 
 class HelloWorld(Template):
@@ -47,7 +48,6 @@ class HelloWorld(Template):
         """
         text_packet = TextPacket(content=self.attributes.display_text)
         text_packet.source = self.instance_name
-
         container.texts.append(text_packet)
 
         return container
