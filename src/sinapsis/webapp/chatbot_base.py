@@ -93,7 +93,7 @@ class BaseChatbot:
             text_msg = message.get(ChatKeys.text, False)
             image_msg = message.get(ChatKeys.files, False)
             if text_msg:
-                text_msg = TextPacket(content=message, id=conv_id)
+                text_msg = TextPacket(content=text_msg, id=conv_id)
                 container.texts.append(text_msg)
             if image_msg:
                 full_image_path = image_msg[0].split("/gradio/")

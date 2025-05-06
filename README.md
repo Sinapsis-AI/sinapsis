@@ -222,41 +222,18 @@ Tutorials for different projects within sinapsis are available at [sinapsis tuto
 
 The sinapsis framework contains a list of public packages with **Templates** covering a wide range of tasks,
 including computer vision, time series, nlp, llm'. These packages include:
-
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis anomaly detection</span></strong></summary>
-
-* [sinapsis-anomaly-detection](https://github.com/Sinapsis-ai/sinapsis-anomaly-detection)
-</details>
-
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis chatbots</span></strong></summary>
-
-* [sinapsis-chatbots](https://github.com/Sinapsis-ai/sinapsis-chatbots)
-</details>
-
 <details>
 <summary><strong><span style="font-size: 1.4em;">sinapsis data tools</span></strong></summary>
 
-* [sinapsis-data-tools](https://github.com/Sinapsis-ai/sinapsis-data-tools)
-</details>
 
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis framework converter</span></strong></summary>
+* [sinapsis-data-readers](https://github.com/Sinapsis-ai/sinapsis-data-tools/tree/main/packages/sinapsis_data_readers)
 
-* [sinapsis-framework-converter](https://github.com/Sinapsis-ai/sinapsis-framework-comverter)
-</details>
+* [sinapsis-data-writers](https://github.com/Sinapsis-ai/sinapsis-data-tools/tree/main/packages/sinapsis_data_writers)
 
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis huggingface</span></strong></summary>
+* [sinapsis-data-visualization](https://github.com/Sinapsis-ai/sinapsis-data-tools/tree/main/packages/sinapsis_data_visualization)
 
-* [sinapsis-huggingface](https://github.com/Sinapsis-ai/sinapsis-huggingface)
-</details>
+* [sinapsis-generic-data-tools](https://github.com/Sinapsis-ai/sinapsis-data-tools/tree/main/packages/sinapsis_generic_data_tools)
 
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis image transforms</span></strong></summary>
-
-* [sinapsis-image-transforms](https://github.com/Sinapsis-ai/sinapsis-image-transforms)
 </details>
 
 <details>
@@ -264,48 +241,12 @@ including computer vision, time series, nlp, llm'. These packages include:
 
 * [sinapsis-langchain-readers](https://github.com/Sinapsis-ai/sinapsis-langchain)
 </details>
-
 <details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis ocr</span></strong></summary>
+<summary><strong><span style="font-size: 1.4em;">sinapsis image transforms</span></strong></summary>
 
-* [sinapsis-ocr](https://github.com/Sinapsis-ai/sinapsis-ocr)
+* [sinapsis-image-transforms](https://github.com/Sinapsis-ai/sinapsis-image-transforms)
 </details>
 
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis object detection</span></strong></summary>
-
-* [sinapsis-object-detection](https://github.com/Sinapsis-ai/sinapsis-object-detection)
-</details>
-
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis openai</span></strong></summary>
-
-* [sinapsis-openai](https://github.com/Sinapsis-ai/sinapsis-openai)
-</details>
-
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis retina face trt</span></strong></summary>
-
-* [sinapsis-retina-face-trt](https://github.com/Sinapsis-ai/sinapsis-retina-face-trt)
-</details>
-
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis speech</span></strong></summary>
-
-* [sinapsis-speech](https://github.com/Sinapsis-ai/sinapsis-speech)
-</details>
-
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis time series</span></strong></summary>
-
-* [sinapsis-time-series](https://github.com/Sinapsis-ai/sinapsis-time-series)
-</details>
-
-<details>
-<summary><strong><span style="font-size: 1.4em;">sinapsis trackers</span></strong></summary>
-
-* [sinapsis-trackers](https://github.com/Sinapsis-ai/sinapsis-trackers)
-</details>
 
 <h2 id="license">🔍 License</h2>
 
