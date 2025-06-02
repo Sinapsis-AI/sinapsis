@@ -1,20 +1,49 @@
 # -*- coding: utf-8 -*-
-import json
 import os.path
 import uuid
+from typing import Any
 
+import cv2
 import gradio as gr
 import numpy as np
-from PIL import Image
+from gradio.utils import get_upload_folder
 from pydantic.dataclasses import dataclass
 from sinapsis_core.cli.run_agent_from_config import generic_agent_builder
-from sinapsis_core.data_containers.data_packet import DataContainer, TextPacket
+from sinapsis_core.data_containers.data_packet import DataContainer, ImagePacket, TextPacket
 from sinapsis_core.utils.env_var_keys import SINAPSIS_CACHE_DIR
 from sinapsis_core.utils.logging_utils import sinapsis_logger
 
 from sinapsis.webapp.agent_gradio_helper import add_logo_and_title, css_header
 
+LOGIN_TEMPLATE = """
+<div style="text-align: center;">
+  <img src="{image}" width="64" style="display: block; margin: 0 auto 10px auto;" />
+  <p style="font-size: 16px; font-weight: bold;">{title}</p>
+  <p>{message}</p>
+</div>
+"""
 SINAPSIS_AVATAR = "https://github.com/Sinapsis-AI/brand-resources/blob/main/sinapsis_logo/4x/fav_icon.png?raw=true"
+
+
+@dataclass
+class ChatbotConfig:
+    """Configuration class for the chatbot application.
+
+    Attributes:
+        app_title (str): The title displayed on the chatbot interface.
+        login_message (str): The message shown on the login screen.
+        login_image (str): URL of the image displayed on the login screen.
+        enable_memories (bool): Flag to enable memory features.
+        examples (list[str] | None): Optional list of example inputs to show in the UI.
+        users_db_config (dict[str, str] | None): Database configuration for user authentication.
+    """
+
+    app_title: str = "Sinapsis Chatbot"
+    # login_message: str = "Please log in with your credentials to continue."
+    login_image: str = SINAPSIS_AVATAR
+    enable_memories: bool = True
+    examples: list[str] | None = None
+    # users_db_config: dict[str, str] | None = None
 
 
 @dataclass
@@ -47,103 +76,92 @@ class BaseChatbot:
     initialization and response handling methods.
     """
 
-    def __init__(self, config_file: str, app_title: str = "Sinapsis LLaMA Chatbot") -> None:
-        """
-        Initialize the chatbot with given configuration, framework, and task.
-
-        Args:
-            config_file (str): Path to the configuration file.
-            app_title (str): Title of the app
-        """
+    def __init__(self, config_file: str, config: ChatbotConfig | dict[str, Any] = ChatbotConfig()) -> None:
         self.config_file = config_file
+        self.config = ChatbotConfig(**config) if isinstance(config, dict) else config
+        self.agent = generic_agent_builder(self.config_file)
+        self.examples = [{ChatKeys.text: example} for example in self.config.examples] if self.config.examples else None
         self.file_name = f"{SINAPSIS_CACHE_DIR}/chatbot/chat.txt"
         os.makedirs(os.path.dirname(self.file_name), exist_ok=True)
-        self.app_title = app_title
-        self.chat_history: list = self.load_chat()
-        self.agent = generic_agent_builder(self.config_file)
 
-    def load_chat(self) -> list:
-        """If the file self.file_name exists, it loads
-        previous chat history. Otherwise, it creates a new file and
-        sets the chat history as an empty list
+    def _setup_working_directory(self) -> None:
+        """Creates a temporary directory for storing uploaded media files."""
+        self.gradio_temp_dir = get_upload_folder()
+        os.makedirs(self.gradio_temp_dir, exist_ok=True)
+
+    @staticmethod
+    def _format_history(history: list[dict[str, Any]], max_turns: int = 5) -> dict[str, Any]:
+        """Formats the chat history into a simplified dictionary with limited turns per role.
+
+        Args:
+                history (list[dict[str, Any]]): Full chat history with role and content.
+                max_turns (int, optional): Number of recent messages to keep per role. Defaults to 5.
 
         Returns:
-            the list of messages or empty list for messages
+                dict[str, Any]: A dictionary in the form {"user": [...], "assistant": [...]}.
         """
-        if os.path.exists(self.file_name):
-            with open(self.file_name, "r", encoding="utf-8") as chat:
-                try:
-                    history = json.load(chat)
-                except json.JSONDecodeError:
-                    history = []
-        else:
-            history = []
-            with open(self.file_name, "w") as file:
-                json.dump(history, file)
-        return history
+        user_msgs = [entry[ChatKeys.content] for entry in history if entry[ChatKeys.role] == ChatKeys.user][-max_turns:]
+        assistant_msgs = [entry[ChatKeys.content] for entry in history if entry[ChatKeys.role] == ChatKeys.assistant][
+            -max_turns:
+        ]
+        return {
+            ChatKeys.user: user_msgs,
+            ChatKeys.assistant: assistant_msgs,
+        }
 
-    def generate_packet(self, message, conv_id: str) -> DataContainer:
-        """
+    def generate_packet(
+        self, container: DataContainer, message: dict[str, Any], history: list[dict[str, Any]], conv_id: str
+    ) -> DataContainer:
+        """Creates a `DataContainer` object from user message and chat history.
+
         Args:
-        message (str): The user's input message, either as a audio file or text
-        conv_id (str): The conversation ID to associate with the message.
+                container (container): incoming container for the query
+                message (dict[str, Any]): Dictionary with keys like 'text' and 'files'.
+                history (list[dict[str, Any]]): List of previous chat messages.
+                conv_id (str): Conversation id value
+
+        Returns:
+                DataContainer: A structured container of the parsed input.
         """
-        container = DataContainer()
-        if isinstance(message, dict):
-            text_msg = message.get(ChatKeys.text, False)
-            image_msg = message.get(ChatKeys.files, False)
-            if text_msg:
-                text_msg = TextPacket(content=text_msg, id=conv_id)
-                container.texts.append(text_msg)
-            if image_msg:
-                full_image_path = image_msg[0].split("/gradio/")
-                data_dir = f"{full_image_path[0]}/gradio/"
-                image_name = full_image_path[1]
-
-                self.agent.update_template_attribute("ImageReader", "data_dir", data_dir)
-                self.agent.update_template_attribute("ImageReader", "pattern", image_name)
-                self.agent.reset_state("ImageReader")
-
-        if isinstance(message, str):
-            if not message.endswith("wav"):
-                text_msg = TextPacket(content=message, id=conv_id)
-                container.texts.append(text_msg)
-            elif message.endswith("wav"):
-                container.generic_data[ChatKeys.audio_path] = message
+        formatted_history = self._format_history(history)
+        container.texts.append(
+            TextPacket(content=message.get(ChatKeys.text), source=conv_id, generic_data={"history": formatted_history})
+        )
+        for file_path in message.get(ChatKeys.files, []):
+            if file_path.endswith(".wav"):
+                container.generic_data[ChatKeys.audio_path] = file_path
+            else:
+                img_bgr = cv2.imread(file_path)
+                img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+                filename = os.path.basename(file_path)
+                container.images.append(ImagePacket(content=img_rgb, color_space=1, source=filename))
         return container
 
-    def agent_execution(self, container: DataContainer) -> dict:
-        """
-        Makes a call to the agent to retrieve a response from the templates in the agent.
+    def agent_execution(self, container: DataContainer) -> dict[str, Any]:
+        """Executes the Sinapsis agent and processes the result into chatbot output.
 
         Args:
-            container (DataContainer): container with the packets to be processed by the
-            templates in the agent.
+            container (DataContainer): Structured input for the agent.
 
         Returns:
-            dict : The response to be added to the chatbot window
-
+            dict[str, Any]: Dictionary with keys such as 'text' and 'files' to display in the UI.
         """
-        response = self.agent(container)
-        response_dict = {
-            ChatKeys.text: "Could not process request, please try again",
-            ChatKeys.files: [],
-        }
-        if response.texts:
-            response_dict = response.texts[-1].content
+        default_response = {ChatKeys.text: "Could not process request, please try again", ChatKeys.files: []}
+        result_container = self.agent(container)
+        response = {}
 
-        if container.generic_data.get(ChatKeys.audio_path):
-            container.generic_data[ChatKeys.audio_path] = False
-        if response.images:
-            image_as_packet = response.images[-1]
-            image = Image.fromarray(np.uint8(image_as_packet.content))
-            image_path = f"{SINAPSIS_CACHE_DIR}{image_as_packet.source}"
-            os.makedirs(os.path.dirname(image_path), exist_ok=True)
+        if result_container.texts:
+            response[ChatKeys.text] = result_container.texts[-1].content
 
-            image.save(image_path)
-            response_dict = {ChatKeys.files: [image_path]}
+        if result_container.images:
+            image_packet = container.images[-1]
+            img_array = np.uint8(image_packet.content)
+            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+            image_path = os.path.join(self.gradio_temp_dir, image_packet.source)
+            cv2.imwrite(image_path, img_array)
+            response[ChatKeys.files] = [image_path]
 
-        return response_dict
+        return response if response else default_response
 
     @staticmethod
     def _set_conversation_id(conv_id: str) -> str:
@@ -159,34 +177,7 @@ class BaseChatbot:
             conv_id = str(uuid.uuid4())
         return conv_id
 
-    def add_message(
-        self, message: dict | str, role: str
-    ) -> tuple[gr.components.MultimodalTextbox, gr.components.Audio]:
-        """
-        The method adds a user or assistant message to the chat history.
-
-        Args:
-            message (dict | str): The input message, either as text or a dictionary.
-            role (str): The role of the message sender, e.g., "user" or "assistant".
-
-        Returns:
-            tuple: A tuple with updated chat history, a Textbox, and an Audio component.
-        """
-        if isinstance(message, dict):
-            for x in message[ChatKeys.files]:
-                self.chat_history.append({ChatKeys.role: role, ChatKeys.content: {ChatKeys.file_path: x}})
-            if message.get(ChatKeys.text, False):
-                self.chat_history.append({ChatKeys.role: role, ChatKeys.content: message[ChatKeys.text]})
-        elif isinstance(message, str) and not message.endswith("wav"):
-            self.chat_history.append({ChatKeys.role: role, ChatKeys.content: message})
-        else:
-            self.chat_history.append({ChatKeys.role: role, ChatKeys.content: {ChatKeys.file_path: message}})
-        return (
-            gr.MultimodalTextbox(),
-            gr.Audio(),
-        )
-
-    def stop_agent(self) -> tuple[dict, dict]:
+    def stop_agent(self) -> dict:
         """
         Stop the chatbot's agent and save the chat history to a file.
 
@@ -194,11 +185,9 @@ class BaseChatbot:
         Returns:
             tuple: A tuple with None and Gradio updates for interactivity.
         """
-        with open(self.file_name, "w+", encoding="utf-8") as chat:
-            json.dump(self.chat_history, chat, indent=4)
-        chat.close()
+
         self.agent = None
-        return gr.update(interactive=False), gr.update(interactive=False)
+        return gr.update(interactive=False)
 
     def _clear_history(self) -> None:
         """
@@ -207,95 +196,87 @@ class BaseChatbot:
         This method writes the current chat history to a file in JSON format,
             then clears the history.
         """
-        self.chat_history = []
+
         try:
             os.remove(self.file_name)
         except FileNotFoundError:
             sinapsis_logger.warning("Chat history file does not exist")
 
-    def process_msg(self, message: str, conv_id: str) -> tuple[list, gr.MultimodalTextbox, gr.Audio, str] | list:
+    def process_msg(self, message: dict, history: list[dict], conv_id: str, container: DataContainer) -> dict:
         """
         Process a user message and generate a chatbot response.
 
         Args:
             message (str): The user's input message.
+            history: list[dict]: list of messages sent through chatbot
             conv_id (str): The conversation ID for the current session.
+            container (DataContainer): Incoming data container for the query
 
         Returns:
             tuple: The updated chat history and UI components for the chatbot interface.
         """
-
+        container = container or DataContainer()
         conv_id = self._set_conversation_id(conv_id)
-        _ = self.add_message(message, ChatKeys.user)
-        container = self.generate_packet(message, conv_id)
+        container = self.generate_packet(container, message, history, conv_id)
         response = self.agent_execution(container)
-        retrieved_chat = self.add_message(response, ChatKeys.assistant)
-        return self.chat_history, retrieved_chat[0], retrieved_chat[1], conv_id
+        return response
 
-    def add_app_components(self) -> tuple[gr.Chatbot, gr.MultimodalTextbox, gr.Audio]:
-        """
-        Add interactive components (buttons, inputs, and chatbot UI) to the interface.
+    def add_app_components(self, conv_id) -> gr.ChatInterface:
+        """Builds and returns the main Gradio chat interface.
 
         Returns:
-            tuple: A tuple containing the components for the chatbot interface.
+            gr.ChatInterface: Configured chat interface with multimodal input.
         """
         chatbot = gr.Chatbot(
-            self.chat_history,
             type="messages",
-            height=800,
+            height=600,
             show_label=False,
             avatar_images=(None, SINAPSIS_AVATAR),
             show_copy_all_button=True,
         )
-        chat_input = gr.MultimodalTextbox(
-            interactive=True, placeholder="Enter a message", show_label=False, file_types=[".png", ".jpg"]
+        textbox = gr.MultimodalTextbox(
+            file_count="multiple",
+            file_types=[".png", ".jpg", ".wav"],
+            sources=["upload", "microphone"],
+            placeholder="Message Chatbot",
+        )
+        container = gr.State(value=DataContainer())
+        interface = gr.ChatInterface(
+            fn=self.process_msg,
+            title=None,
+            multimodal=True,
+            chatbot=chatbot,
+            fill_height=True,
+            css=css_header,
+            type="messages",
+            examples=self.examples,
+            example_icons=[SINAPSIS_AVATAR] * len(self.examples) if self.examples else None,
+            textbox=textbox,
+            save_history=True,
+            additional_inputs=[conv_id, container],
         )
 
-        audio_input = gr.Audio(
-            sources=["microphone"],
-            type="filepath",
-            label="Record Audio",
-            interactive=True,
-        )
+        stop_agent = gr.Button("Stop chatbot")
+        stop_agent.click(self.stop_agent, outputs=[textbox])
 
-        return chatbot, chat_input, audio_input
+        return interface
 
-    def app_interface(self) -> None:
+    def app_interface(self) -> gr.Blocks:
+        """Builds the full Gradio UI layout for the chatbot application.
+
+        Returns:
+            gr.Blocks: Gradio Blocks layout for the complete application.
         """
-        Define the core functionality of the chatbot, including initialization,
-        message handling, and user interaction.
-        """
+        with gr.Blocks(css=css_header(), title=self.config.app_title) as chatbot_interface:
+            add_logo_and_title(self.config.app_title)
+            conv_id = gr.State(value=str(uuid.uuid4()))
+            self.add_app_components(conv_id)
 
-        conversation_id = gr.State()
-        (
-            chatbot,
-            chat_input,
-            audio_input,
-        ) = self.add_app_components()
-
-        clear_btn = gr.ClearButton([audio_input, chat_input, chatbot, conversation_id])
-        clear_btn.click(self._clear_history, inputs=[], outputs=[])
-
-        audio_input.stop_recording(
-            self.process_msg,
-            inputs=[audio_input, conversation_id],
-            outputs=[chatbot, chat_input, audio_input, conversation_id],
-        )
-        chat_input.submit(
-            self.process_msg,
-            inputs=[chat_input, conversation_id],
-            outputs=[chatbot, chat_input, audio_input, conversation_id],
-        )
-
-        finish_chatbot = gr.Button(value="Finish chatbot", elem_id="finish-button", variant="primary")
-        finish_chatbot.click(
-            self.stop_agent,
-            inputs=[],
-            outputs=[chat_input, audio_input],
-        )
-
-    def __call__(self) -> gr.Blocks:
-        with gr.Blocks(css=css_header()) as chatbot_interface:
-            add_logo_and_title(self.app_title)
-            self.app_interface()
         return chatbot_interface
+
+    def launch(self, **kwargs: dict[str, Any]) -> None:
+        """Launches the Gradio app, optionally with authentication and custom options."""
+        interface = self.app_interface()
+        interface.launch(
+            **kwargs,
+        )

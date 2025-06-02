@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from typing import cast
 
 import gradio as gr
 from sinapsis_core.agent import Agent
@@ -38,6 +37,7 @@ class BaseTTSApp:
         self.framework = framework
         self.task = task
         self.generic_key_or_base_path = generic_key_or_base_path
+        self.agent, self.initialized_state = self.init_agent()
 
     def init_agent(self) -> tuple[Agent, bool]:
         """
@@ -61,16 +61,12 @@ class BaseTTSApp:
             str | None: The path to the generated audio file, or None if the output is invalid.
         """
 
-    def text_to_speech(
-        self, initialized: bool, agent: Agent | None, text_to_convert: str
-    ) -> tuple[gr.Audio | None, str | None]:
+    def text_to_speech(self, text_to_convert: str) -> tuple[gr.Audio | None, str | None]:
         """
         Converts text to speech by passing the text through the agent and postprocessing steps.
         If models has not been initialized, only a text hint is returned.
 
         Args:
-            initialized (bool): Whether the agent has been initialized.
-            agent (object): The agent object generated using `generic_agent_builder`.
             text_to_convert (str): The text to be converted to speech.
 
         Returns:
@@ -79,10 +75,9 @@ class BaseTTSApp:
         Raises:
             gr.Error: If the speech generation fails.
         """
-        if initialized:
-            agent = cast(Agent, agent)
+        if self.initialized_state:
             container = DataContainer(texts=[TextPacket(content=text_to_convert)])
-            output_container = agent(container)
+            output_container = self.agent(container)
             audio_path = self._postprocess_output(output_container, self.generic_key_or_base_path)
             if audio_path:
                 return gr.Audio(audio_path, visible=True), None
@@ -92,15 +87,14 @@ class BaseTTSApp:
     @staticmethod
     def update_status_msg() -> str:
         """Updates status_text to indicate that the model is ready."""
-        return "#### Model ready. Click on the box the text you wish to convert to speech and submit to generate!"
+        return gr.Markdown(
+            "#### Model ready. Click on the box the text you wish to convert to speech and submit to generate!"
+        )
 
-    def inner_tts_functionality(self, interface: gr.Interface) -> None:
+    def inner_tts_functionality(self) -> None:
         """
         Defines the inner functionality of the TTS app interface using Gradio components.
         """
-        agent_state = gr.State()
-        initialized_state = gr.State(False)
-        interface.load(self.init_agent, outputs=[agent_state, initialized_state])
 
         text_to_convert = gr.Textbox(
             submit_btn=True,
@@ -109,25 +103,28 @@ class BaseTTSApp:
             + "a flexible template system that ensures modularity and compatibility between models and tools widely "
             + "used by the community.",
         )
-        status_msg = gr.Markdown("#### Initializing model...")
-        initialized_state.change(self.update_status_msg, outputs=[status_msg])
+        status_msg = self.update_status_msg()
 
         audio_generated = gr.Audio(label="Audio generated:", visible=False)
 
         text_to_convert.submit(
             self.text_to_speech,
-            inputs=[initialized_state, agent_state, text_to_convert],
+            inputs=[text_to_convert],
             outputs=[audio_generated, status_msg],
         )
 
-    def __call__(self) -> gr.Blocks:
-        """
-        Invokes the Gradio interface and displays the TTS functionality.
-        """
+    def app_interface(self):
         with gr.Blocks(css=css_header()) as tts_interface:
             add_logo_and_title(f"Sinapsis {self.framework} {self.task} demo")
-            self.inner_tts_functionality(tts_interface)
+            self.inner_tts_functionality()
         return tts_interface
+
+    def launch(self, **kwargs) -> None:
+        """Launches the Gradio app, optionally with authentication and custom options."""
+        interface = self.app_interface()
+        interface.launch(
+            **kwargs,
+        )
 
 
 class TTSAppAudioFromPacket(BaseTTSApp):
