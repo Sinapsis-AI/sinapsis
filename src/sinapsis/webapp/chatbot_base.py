@@ -83,6 +83,8 @@ class BaseChatbot:
         self.examples = [{ChatKeys.text: example} for example in self.config.examples] if self.config.examples else None
         self.file_name = f"{SINAPSIS_CACHE_DIR}/chatbot/chat.txt"
         os.makedirs(os.path.dirname(self.file_name), exist_ok=True)
+        self._setup_working_directory()
+
 
     def _setup_working_directory(self) -> None:
         """Creates a temporary directory for storing uploaded media files."""
