@@ -85,7 +85,6 @@ class BaseChatbot:
         os.makedirs(os.path.dirname(self.file_name), exist_ok=True)
         self._setup_working_directory()
 
-
     def _setup_working_directory(self) -> None:
         """Creates a temporary directory for storing uploaded media files."""
         self.gradio_temp_dir = get_upload_folder()
