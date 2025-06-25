@@ -7,7 +7,9 @@ import cv2
 import gradio as gr
 import numpy as np
 from gradio.utils import get_upload_folder
+from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
+from sinapsis_core.agent.agent import Agent
 from sinapsis_core.cli.run_agent_from_config import generic_agent_builder
 from sinapsis_core.data_containers.data_packet import DataContainer, ImagePacket, TextPacket
 from sinapsis_core.utils.env_var_keys import SINAPSIS_CACHE_DIR
@@ -39,11 +41,9 @@ class ChatbotConfig:
     """
 
     app_title: str = "Sinapsis Chatbot"
-    # login_message: str = "Please log in with your credentials to continue."
     login_image: str = SINAPSIS_AVATAR
-    enable_memories: bool = True
+    # enable_memories: bool = True
     examples: list[str] | None = None
-    # users_db_config: dict[str, str] | None = None
 
 
 @dataclass
@@ -66,6 +66,23 @@ class ChatKeys:
     assistant: str = "assistant"
 
 
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
+class ChatInterfaceComponents:
+    """Container for core UI components used in the chat interface.
+
+    Attributes:
+        chatbot (gr.Chatbot): The chatbot message display area.
+        textbox (gr.MultimodalTextbox): Input field for user messages and file uploads.
+        session_state (gr.State): State object to track the user's session.
+        chat_interface (gr.ChatInterface): Main Gradio chat interface component.
+    """
+
+    chatbot: gr.Chatbot
+    textbox: gr.MultimodalTextbox
+    session_state: gr.State
+    chat_interface: gr.ChatInterface
+
+
 class BaseChatbot:
     """
     A base chatbot class designed to work with various LLM frameworks, such as LLaMA.
@@ -79,55 +96,80 @@ class BaseChatbot:
     def __init__(self, config_file: str, config: ChatbotConfig | dict[str, Any] = ChatbotConfig()) -> None:
         self.config_file = config_file
         self.config = ChatbotConfig(**config) if isinstance(config, dict) else config
-        self.agent = generic_agent_builder(self.config_file)
-        self.examples = [{ChatKeys.text: example} for example in self.config.examples] if self.config.examples else None
-        self.file_name = f"{SINAPSIS_CACHE_DIR}/chatbot/chat.txt"
-        os.makedirs(os.path.dirname(self.file_name), exist_ok=True)
+        self.chatbot_height = "70vh"
+        self.agent = self.initialize_agent(self.config_file)
+        self.examples = (
+            [[{ChatKeys.text: example}, None] for example in self.config.examples] if self.config.examples else None
+        )
         self._setup_working_directory()
 
+    @staticmethod
+    def initialize_agent(config_file: str) -> Agent:
+        """Instantiate the chatbot agent from the configuration file."""
+        return generic_agent_builder(config_file)
+
+    def stop_agent(self) -> tuple[dict, dict, dict]:
+        """Stops the chatbot agent and disables user input components in the UI.
+
+        This method performs cleanup of the agent, releases GPU memory, logs the shutdown,
+        and returns Gradio UI updates that:
+
+            - Disable the input textbox and stop button.
+            - Enable the restart button.
+
+        Returns:
+            tuple[dict, dict, dict]: Gradio UI updates for textbox, stop button and restart button.
+        """
+        self.agent.cancel_agent_execution()
+        gr.Info("🛑 Chatbot stopped!")
+        sinapsis_logger.info("Chatbot stopped")
+        return (
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            gr.update(interactive=True),
+        )
+
     def _setup_working_directory(self) -> None:
-        """Creates a temporary directory for storing uploaded media files."""
+        """Create and ensure the existence of directories for uploads and cached chat histories."""
         self.gradio_temp_dir = get_upload_folder()
+        self.chats_dir = os.path.join(SINAPSIS_CACHE_DIR, "chats")
         os.makedirs(self.gradio_temp_dir, exist_ok=True)
+        os.makedirs(self.chats_dir, exist_ok=True)
+
+    def restart_agent(self) -> tuple[dict, dict, dict]:
+        """Reinitializes the chatbot agent and enables user input components in the UI.
+
+        This method rebuilds the agent, logs the startup, and returns Gradio UI updates that:
+
+            - Enable the input textbox and stop button.
+            - Disable the restart button.
+
+        Returns:
+            tuple[dict, dict, dict]: Gradio UI updates for textbox, stop button and restart button.
+        """
+        self.agent = self.initialize_agent(self.config_file)
+        gr.Success("✅ Chatbot ready!")
+        sinapsis_logger.info("Chatbot initialized")
+        return (
+            gr.update(interactive=True),
+            gr.update(interactive=True),
+            gr.update(interactive=False),
+        )
 
     @staticmethod
-    def _format_history(history: list[dict[str, Any]], max_turns: int = 5) -> dict[str, Any]:
-        """Formats the chat history into a simplified dictionary with limited turns per role.
+    def generate_packet(message: dict[str, Any], user_id: str, session_id: str | None = None) -> DataContainer:
+        """Constructs a DataContainer from user input including text, files, and optional session info.
 
         Args:
-                history (list[dict[str, Any]]): Full chat history with role and content.
-                max_turns (int, optional): Number of recent messages to keep per role. Defaults to 5.
+                message (dict[str, Any]): User input with keys: 'text', 'files'.
+                user_id (str): Unique identifier for the user.
+                session_id (str | None, optional): Identifier for the session. Defaults to None.
 
         Returns:
-                dict[str, Any]: A dictionary in the form {"user": [...], "assistant": [...]}.
+                DataContainer: Structured container with text, images, or audio ready for agent execution.
         """
-        user_msgs = [entry[ChatKeys.content] for entry in history if entry[ChatKeys.role] == ChatKeys.user][-max_turns:]
-        assistant_msgs = [entry[ChatKeys.content] for entry in history if entry[ChatKeys.role] == ChatKeys.assistant][
-            -max_turns:
-        ]
-        return {
-            ChatKeys.user: user_msgs,
-            ChatKeys.assistant: assistant_msgs,
-        }
-
-    def generate_packet(
-        self, container: DataContainer, message: dict[str, Any], history: list[dict[str, Any]], conv_id: str
-    ) -> DataContainer:
-        """Creates a `DataContainer` object from user message and chat history.
-
-        Args:
-                container (container): incoming container for the query
-                message (dict[str, Any]): Dictionary with keys like 'text' and 'files'.
-                history (list[dict[str, Any]]): List of previous chat messages.
-                conv_id (str): Conversation id value
-
-        Returns:
-                DataContainer: A structured container of the parsed input.
-        """
-        formatted_history = self._format_history(history)
-        container.texts.append(
-            TextPacket(content=message.get(ChatKeys.text), source=conv_id, generic_data={"history": formatted_history})
-        )
+        container = DataContainer()
+        container.texts.append(TextPacket(content=message.get(ChatKeys.text), id=user_id, source=session_id))
         for file_path in message.get(ChatKeys.files, []):
             if file_path.endswith(".wav"):
                 container.generic_data[ChatKeys.audio_path] = file_path
@@ -164,76 +206,54 @@ class BaseChatbot:
 
         return response if response else default_response
 
-    @staticmethod
-    def _set_conversation_id(conv_id: str) -> str:
-        """
-        Ensure a valid conversation ID is set. If no ID is provided, a new one is
-        generated.
-        Args:
-            conv_id (str): The provided conversation ID.
-        Returns:
-            str: The valid conversation ID (either provided or generated).
-        """
-        if not conv_id:
-            conv_id = str(uuid.uuid4())
-        return conv_id
-
-    def stop_agent(self) -> dict:
-        """
-        Stop the chatbot's agent and save the chat history to a file.
-
-
-        Returns:
-            tuple: A tuple with None and Gradio updates for interactivity.
-        """
-
-        self.agent = None
-        return gr.update(interactive=False)
-
-    def _clear_history(self) -> None:
-        """
-        Clears the chat history and saves it to a file named "chat.txt".
-
-        This method writes the current chat history to a file in JSON format,
-            then clears the history.
-        """
-
-        try:
-            os.remove(self.file_name)
-        except FileNotFoundError:
-            sinapsis_logger.warning("Chat history file does not exist")
-
-    def process_msg(self, message: dict, history: list[dict], conv_id: str, container: DataContainer) -> dict:
-        """
-        Process a user message and generate a chatbot response.
+    def generate_user_response(
+        self, message: dict[str, Any], user_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Generates a response from the agent for a given user input.
 
         Args:
-            message (str): The user's input message.
-            history: list[dict]: list of messages sent through chatbot
-            conv_id (str): The conversation ID for the current session.
-            container (DataContainer): Incoming data container for the query
+            message (dict[str, Any]): Dictionary with user inputs (text, files, etc.).
+            user_id (str): Unique user identifier.
+            session_id (str | None, optional): Optional unique session identifier. Defaults to None.
 
         Returns:
-            tuple: The updated chat history and UI components for the chatbot interface.
+            dict[str, Any]: Response payload containing 'text' and/or 'files'.
         """
-        container = container or DataContainer()
-        conv_id = self._set_conversation_id(conv_id)
-        container = self.generate_packet(container, message, history, conv_id)
-        response = self.agent_execution(container)
-        return response
+        container = self.generate_packet(message, user_id, session_id)
+        return self.agent_execution(container)
 
-    def add_app_components(self, conv_id) -> gr.ChatInterface:
-        """Builds and returns the main Gradio chat interface.
+    def handle_user_message(
+        self, message: dict[str, Any], history: list[dict], session_state: str, user_id: gr.State | str
+    ) -> dict[str, Any]:
+        """Handles a user message from the UI and routes it through the agent.
+
+        Args:
+            message (dict[str, Any]): Input data from the user interface.
+            history (list[dict]): Unused chat history.
+            session_state (str): Session UUID state.
+            user_id (gr.State | None): user ID state.
 
         Returns:
-            gr.ChatInterface: Configured chat interface with multimodal input.
+            dict[str, Any]: Chatbot response formatted for the UI.
+        """
+        _ = history
+        return self.generate_user_response(message, user_id, session_state)
+
+    def _build_chat_interface(self) -> ChatInterfaceComponents:
+        """Constructs the main chat interface with all core components.
+
+        This includes the chatbot display, multimodal input textbox,
+        session state, and the overall `ChatInterface` wrapper.
+
+        Returns:
+            ChatInterfaceComponents: A container holding all relevant UI components.
         """
         chatbot = gr.Chatbot(
             type="messages",
-            height=600,
+            height=self.chatbot_height,
             show_label=False,
             avatar_images=(None, SINAPSIS_AVATAR),
-            show_copy_all_button=True,
+            show_copy_button=True,
         )
         textbox = gr.MultimodalTextbox(
             file_count="multiple",
@@ -241,39 +261,92 @@ class BaseChatbot:
             sources=["upload", "microphone"],
             placeholder="Message Chatbot",
         )
-        container = gr.State(value=DataContainer())
-        interface = gr.ChatInterface(
-            fn=self.process_msg,
+        session_state = gr.State(str(uuid.uuid4()))
+        user_id = gr.Textbox("Chatbot user", visible=False)
+        chat_interface = gr.ChatInterface(
+            fn=self.handle_user_message,
+            additional_inputs=[session_state, user_id],
             title=None,
             multimodal=True,
             chatbot=chatbot,
             fill_height=True,
-            css=css_header,
             type="messages",
             examples=self.examples,
             example_icons=[SINAPSIS_AVATAR] * len(self.examples) if self.examples else None,
             textbox=textbox,
-            save_history=True,
-            additional_inputs=[conv_id, container],
+            api_name=False,
         )
+        chatbot.clear(self.handle_clear_history, inputs=[session_state, user_id])
 
-        stop_agent = gr.Button("Stop chatbot")
-        stop_agent.click(self.stop_agent, outputs=[textbox])
+        return ChatInterfaceComponents(chatbot, textbox, session_state, chat_interface)
 
-        return interface
+    def clear_user_conversation(self, user_id: str, session_id: str | None = None) -> None:
+        """Clears stored conversation data for the specified user/session.
 
-    def app_interface(self) -> gr.Blocks:
-        """Builds the full Gradio UI layout for the chatbot application.
+        Can be overridden by subclasses to customize additional actions when clearing conversations.
+
+        Args:
+            user_id (str): Unique user identifier.
+            session_id (str | None, optional): Optional session ID to scope clearing. Defaults to None.
 
         Returns:
-            gr.Blocks: Gradio Blocks layout for the complete application.
+            Any: Result of the clear operation (to be defined by subclasses).
         """
-        with gr.Blocks(css=css_header(), title=self.config.app_title) as chatbot_interface:
-            add_logo_and_title(self.config.app_title)
-            conv_id = gr.State(value=str(uuid.uuid4()))
-            self.add_app_components(conv_id)
 
-        return chatbot_interface
+    def handle_clear_history(self, session_state: gr.State, user_id: str) -> None:
+        """Triggers the clearing of a user's chat history from the UI button.
+
+        Args:
+            session_state (gr.State): Current session state object.
+            user_id (str): Gradio request containing user/session info.
+        """
+        # user_id = request.username if request.username else request.session_hash
+        self.clear_user_conversation(user_id, session_state)
+
+    def _add_buttons(self, chat_components: ChatInterfaceComponents):
+        """Adds 'Stop' and 'Start Chatbot' buttons to control agent lifecycle.
+
+        Can be overriden by subclasses to add more control buttons in the footer.
+
+        Args:
+            chat_components (ChatInterfaceComponents): Container with components needed
+                to enable/disable input based on chatbot state.
+        """
+        stop_btn = gr.Button("Stop chatbot")
+        restart_btn = gr.Button("Start Chatbot", interactive=False)
+        stop_btn.click(self.stop_agent, outputs=[chat_components.textbox, stop_btn, restart_btn])
+        restart_btn.click(self.restart_agent, outputs=[chat_components.textbox, stop_btn, restart_btn])
+
+    def _inject_header_components(self):
+        """Adds visual elements at the top of the UI (e.g., logo, app title).
+
+        Can be overridden by subclasses to customize header layout.
+        """
+        add_logo_and_title(self.config.app_title)
+
+    def _inject_footer_components(self, chat_components: ChatInterfaceComponents):
+        """Adds UI components below the chat interface, such as control buttons.
+
+        Can be overriden by subclasses to add more elements in the footer.
+
+        Args:
+            chat_components (ChatInterfaceComponents): Group of UI elements built in the chat interface.
+        """
+        with gr.Row():
+            self._add_buttons(chat_components)
+
+    def app_interface(self) -> gr.Blocks:
+        """Builds the full Gradio Blocks layout including chat interface, headers, footers, and extras.
+
+        Returns:
+            gr.Blocks: Composed Gradio interface ready to launch.
+        """
+        with gr.Blocks(css=css_header(), title=self.config.app_title) as interface:
+            self._inject_header_components()
+            chat_components = self._build_chat_interface()
+            self._inject_footer_components(chat_components)
+
+        return interface
 
     def launch(self, **kwargs: dict[str, Any]) -> None:
         """Launches the Gradio app, optionally with authentication and custom options."""

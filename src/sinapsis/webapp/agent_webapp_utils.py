@@ -41,9 +41,7 @@ def infer_video(agent: Agent, video: Any) -> Path:
     """
     agent.update_template_attribute("VideoReaderCV2", "video_file_path", video)
     agent.reset_state()
-
-    agent.agent_attributes.agent_mode = AgentMode.GENERATOR
-    for _ in agent(None):
+    for _ in agent(None, AgentMode.GENERATOR):
         pass
     agent.topological_sort["VideoWriterCV2"].template_instance.video_writer_is_done()
     sinapsis_logger.debug("Finished processing video")
