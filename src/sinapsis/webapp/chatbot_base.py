@@ -64,6 +64,7 @@ class ChatKeys:
     content: str = "content"
     user: str = "user"
     assistant: str = "assistant"
+    video_path: str = "VideoWriter"
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -168,8 +169,10 @@ class BaseChatbot:
         Returns:
                 DataContainer: Structured container with text, images, or audio ready for agent execution.
         """
+
         container = DataContainer()
-        container.texts.append(TextPacket(content=message.get(ChatKeys.text), id=user_id, source=session_id))
+        if message.get(ChatKeys.text, False):
+            container.texts.append(TextPacket(content=message.get(ChatKeys.text), id=user_id, source=session_id))
         for file_path in message.get(ChatKeys.files, []):
             if file_path.endswith(".wav"):
                 container.generic_data[ChatKeys.audio_path] = file_path
@@ -203,7 +206,14 @@ class BaseChatbot:
             image_path = os.path.join(self.gradio_temp_dir, image_packet.source)
             cv2.imwrite(image_path, img_array)
             response[ChatKeys.files] = [image_path]
-
+        if container.generic_data.get(ChatKeys.audio_path, False):
+            container.generic_data[ChatKeys.audio_path] = False
+        if result_container.audios:
+            response[ChatKeys.files] = result_container.audios[-1].content
+        if container.generic_data.get(ChatKeys.video_path, False):
+            response[ChatKeys.files] = [str(result_container.generic_data.get(ChatKeys.video_path))]
+        if not response.get(ChatKeys.text, False):
+            response[ChatKeys.text] = ""
         return response if response else default_response
 
     def generate_user_response(
@@ -237,6 +247,7 @@ class BaseChatbot:
             dict[str, Any]: Chatbot response formatted for the UI.
         """
         _ = history
+
         return self.generate_user_response(message, user_id, session_state)
 
     def _build_chat_interface(self) -> ChatInterfaceComponents:

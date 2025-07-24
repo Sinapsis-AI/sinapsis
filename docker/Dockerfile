@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     	&& apt clean && rm -rf /var/lib/apt/lists/*
 
 # install uv
-ADD https://astral.sh/uv/install.sh /uv-installer.sh
-RUN sh /uv-installer.sh && rm /uv-installer.sh
+ADD https://astral.sh/uv/0.6.17/install.sh /uv-installer.sh
+RUN sh /sh uv-installer.sh && rm /uv-installer.sh
 ENV PATH="/root/.local/bin/:$PATH"
 COPY . /app/
 
